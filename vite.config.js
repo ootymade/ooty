@@ -3,8 +3,14 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import { defineConfig } from 'vite'
 
+// GitHub Pages serves this repo at /ooty/, so every absolute path (routes,
+// manifest, icons) needs that prefix. Set BASE_PATH to '/' instead if you
+// deploy to a custom domain or host at the root.
+const BASE_PATH = '/ooty/'
+
 // https://vite.dev/config/
 export default defineConfig({
+  base: BASE_PATH,
   plugins: [
     react(),
     tailwindcss(),
@@ -19,23 +25,23 @@ export default defineConfig({
         background_color: '#f8fafc',
         display: 'standalone',
         orientation: 'portrait',
-        start_url: '/',
-        scope: '/',
+        start_url: BASE_PATH,
+        scope: BASE_PATH,
         icons: [
           {
-            src: '/icons/icon-192.png',
+            src: 'icons/icon-192.png',
             sizes: '192x192',
             type: 'image/png',
             purpose: 'any',
           },
           {
-            src: '/icons/icon-512.png',
+            src: 'icons/icon-512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any',
           },
           {
-            src: '/icons/icon-maskable-512.png',
+            src: 'icons/icon-maskable-512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',

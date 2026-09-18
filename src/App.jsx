@@ -22,7 +22,7 @@ function AppShell() {
   if (!member) return <NamePicker />
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <div className="min-h-screen bg-slate-50 pb-[calc(64px+env(safe-area-inset-bottom))]">
         <Routes>
           <Route path="/" element={<Dashboard />} />
