@@ -10,6 +10,7 @@ import {
   ClipboardIcon,
   BoxIcon,
   TruckIcon,
+  SyncIcon,
 } from '../components/icons.jsx'
 
 function formatMoney(n) {
@@ -87,15 +88,24 @@ export default function Dashboard() {
             <p className="text-sm text-brand-100">Hi, {member?.name}</p>
             <h1 className="text-xl font-bold">Inventory Overview</h1>
           </div>
-          <button
-            onClick={() => {
-              if (confirm('Switch user on this phone?')) clearMember()
-            }}
-            className="tap flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-sm font-bold"
-            aria-label="Switch user"
-          >
-            {member?.name?.[0]?.toUpperCase()}
-          </button>
+          <div className="flex items-center gap-2">
+            <Link
+              to="/data-sync"
+              className="tap flex h-10 w-10 items-center justify-center rounded-full bg-white/10"
+              aria-label="Export / Import data"
+            >
+              <SyncIcon className="h-5 w-5" />
+            </Link>
+            <button
+              onClick={() => {
+                if (confirm('Switch user on this phone?')) clearMember()
+              }}
+              className="tap flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-sm font-bold"
+              aria-label="Switch user"
+            >
+              {member?.name?.[0]?.toUpperCase()}
+            </button>
+          </div>
         </div>
 
         {stats.lowStockCount > 0 && (
