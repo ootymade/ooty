@@ -3,6 +3,7 @@
 // from on-device IndexedDB to a shared Supabase backend without any screen
 // needing to change.
 import { supabase } from './supabaseClient.js'
+import { sortByCategoryOrder } from './categoryOrder.js'
 
 const clean = (str) => (str ?? '').toString().trim()
 
@@ -112,7 +113,7 @@ export async function getProductByCode(code) {
 export async function listCategories() {
   const { data, error } = await supabase.from('products').select('category')
   must(error)
-  return [...new Set(data.map((r) => r.category).filter(Boolean))].sort()
+  return sortByCategoryOrder([...new Set(data.map((r) => r.category).filter(Boolean))])
 }
 
 export async function createProduct(data, member) {
