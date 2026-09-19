@@ -36,29 +36,32 @@ const REASON_LABEL = {
   adjustment: 'Adjusted',
 }
 
+const FEATURED_CATEGORIES = ['Chocolate', 'Varkey']
+
 export default function Dashboard() {
   const { member, clearMember } = useTeamMember()
   const navigate = useNavigate()
   const [stats, setStats] = useState(null)
-  const [productNames, setProductNames] = useState({})
+  const [products, setProducts] = useState(null)
 
   const load = useCallback(async () => {
-    setStats(await getDashboardStats())
+    const [s, all] = await Promise.all([getDashboardStats(), listProducts()])
+    setStats(s)
+    setProducts(all)
   }, [])
 
   useEffect(() => {
     load()
   }, [load])
 
-  // Resolve product names for the activity feed (cheap: <=50 products)
-  useEffect(() => {
-    if (!stats?.recentActivity?.length) return
-    listProducts().then((all) => {
-      const map = {}
-      all.forEach((p) => (map[p.id] = p))
-      setProductNames(map)
-    })
-  }, [stats])
+  const productNames = {}
+  products?.forEach((p) => (productNames[p.id] = p))
+
+  const featuredProducts =
+    products?.filter((p) => FEATURED_CATEGORIES.includes(p.category)).sort((a, b) => {
+      const ci = FEATURED_CATEGORIES.indexOf(a.category) - FEATURED_CATEGORIES.indexOf(b.category)
+      return ci !== 0 ? ci : a.name.localeCompare(b.name)
+    }) ?? []
 
   if (!stats) {
     return (
@@ -139,6 +142,33 @@ export default function Dashboard() {
         </Card>
       </div>
 
+      {featuredProducts.length > 0 && (
+        <div className="mt-5 px-4">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-sm font-semibold text-slate-500">Chocolate &amp; Varkey stock</p>
+            <Link to="/products" className="text-xs font-semibold text-brand-600">
+              See all
+            </Link>
+          </div>
+          <Card className="divide-y divide-slate-100 !p-0">
+            {featuredProducts.map((p) => {
+              const low = p.quantity <= p.lowStockThreshold
+              return (
+                <Link key={p.id} to={`/products/${p.id}`} className="flex items-center justify-between px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-800">{p.name}</p>
+                    <p className="text-xs text-slate-400">{p.category}</p>
+                  </div>
+                  <Badge tone={low ? 'danger' : 'slate'}>
+                    {p.quantity} {p.unit}
+                  </Badge>
+                </Link>
+              )
+            })}
+          </Card>
+        </div>
+      )}
+
       <div className="mt-5 px-4">
         <p className="mb-2 text-sm font-semibold text-slate-500">Quick actions</p>
         <div className="grid grid-cols-3 gap-3">
@@ -160,30 +190,6 @@ export default function Dashboard() {
           </Button>
         </div>
       </div>
-
-      {stats.lowStockCount > 0 && (
-        <div className="mt-5 px-4">
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-500">Low stock</p>
-            <Link to="/products?filter=low-stock" className="text-xs font-semibold text-brand-600">
-              See all
-            </Link>
-          </div>
-          <Card className="divide-y divide-slate-100 !p-0">
-            {stats.lowStockProducts.slice(0, 4).map((p) => (
-              <Link key={p.id} to={`/products/${p.id}`} className="flex items-center justify-between px-4 py-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-slate-800">{p.name}</p>
-                  <p className="text-xs text-slate-400">{p.sku}</p>
-                </div>
-                <Badge tone="danger">
-                  {p.quantity} {p.unit} left
-                </Badge>
-              </Link>
-            ))}
-          </Card>
-        </div>
-      )}
 
       <div className="mt-5 px-4">
         <p className="mb-2 text-sm font-semibold text-slate-500">Recent activity</p>
