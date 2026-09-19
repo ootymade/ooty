@@ -1,35 +1,16 @@
-import { useEffect, useRef, useState } from 'react'
-import { exportAll, importMerge, getMeta } from '../../db/storage.js'
+import { useRef, useState } from 'react'
+import { exportAll, bulkImportProducts } from '../../db/storage.js'
+import { useTeamMember } from '../../context/TeamMemberContext.jsx'
 import { useToast } from '../../context/ToastContext.jsx'
 import { PageHeader, Card, Button, Spinner } from '../../components/ui.jsx'
 import { DownloadIcon, UploadIcon } from '../../components/icons.jsx'
 
-function formatDateTime(iso) {
-  if (!iso) return 'Never'
-  return new Date(iso).toLocaleString(undefined, {
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
 export default function DataSync() {
   const { push } = useToast()
+  const { member } = useTeamMember()
   const fileInput = useRef(null)
-  const [lastExport, setLastExport] = useState(null)
-  const [lastImport, setLastImport] = useState(null)
   const [exporting, setExporting] = useState(false)
   const [importing, setImporting] = useState(false)
-
-  const refresh = async () => {
-    setLastExport(await getMeta('lastExport'))
-    setLastImport(await getMeta('lastImport'))
-  }
-
-  useEffect(() => {
-    refresh()
-  }, [])
 
   const doExport = async () => {
     setExporting(true)
@@ -46,7 +27,6 @@ export default function DataSync() {
       a.remove()
       URL.revokeObjectURL(url)
       push('Export ready — check your downloads', { tone: 'success' })
-      refresh()
     } catch (err) {
       push(err.message, { tone: 'error' })
     } finally {
@@ -62,9 +42,8 @@ export default function DataSync() {
     try {
       const text = await file.text()
       const payload = JSON.parse(text)
-      await importMerge(payload)
-      push('Import merged successfully', { tone: 'success' })
-      refresh()
+      const { created, updated } = await bulkImportProducts(payload, member)
+      push(`Added ${created} new product${created === 1 ? '' : 's'}, updated ${updated}`, { tone: 'success' })
     } catch (err) {
       push(`Import failed: ${err.message}`, { tone: 'error' })
     } finally {
@@ -74,31 +53,30 @@ export default function DataSync() {
 
   return (
     <div>
-      <PageHeader title="Export / Import" back />
+      <PageHeader title="Export & bulk import" back />
 
       <div className="space-y-4 px-4 py-4">
         <Card className="space-y-3">
           <div>
             <p className="text-sm font-semibold text-slate-700">Export data</p>
             <p className="mt-0.5 text-xs text-slate-400">
-              Saves a JSON file with all products, suppliers, purchase orders and stock movements from this
-              phone. Share it (e.g. via WhatsApp/email) with a teammate to sync.
+              Downloads a JSON snapshot of every product, supplier, purchase order and stock movement —
+              useful as a backup, or for building a report offline. Since all phones now share the same
+              live data, you don't need this to keep phones in sync anymore.
             </p>
           </div>
           <Button className="w-full" onClick={doExport} disabled={exporting}>
             {exporting ? <Spinner className="h-4 w-4" /> : <DownloadIcon className="h-5 w-5" />}
             Export data
           </Button>
-          <p className="text-xs text-slate-400">Last export: {formatDateTime(lastExport)}</p>
         </Card>
 
         <Card className="space-y-3">
           <div>
-            <p className="text-sm font-semibold text-slate-700">Import data</p>
+            <p className="text-sm font-semibold text-slate-700">Bulk import products</p>
             <p className="mt-0.5 text-xs text-slate-400">
-              Merges a teammate's exported file into this phone's data. Nothing is overwritten — products
-              are matched by SKU, and stock movements from both phones are combined so no one's updates get
-              lost.
+              Upload a JSON file with a <code>products</code> list to add many products at once. Existing
+              products are matched and updated by SKU; new SKUs are added as new products.
             </p>
           </div>
           <Button variant="outline" className="w-full" onClick={() => fileInput.current?.click()} disabled={importing}>
@@ -106,13 +84,7 @@ export default function DataSync() {
             Choose file to import
           </Button>
           <input ref={fileInput} type="file" accept="application/json" className="hidden" onChange={onFileChosen} />
-          <p className="text-xs text-slate-400">Last import: {formatDateTime(lastImport)}</p>
         </Card>
-
-        <p className="px-1 text-center text-xs text-slate-400">
-          Tip: export regularly (e.g. end of shift) and have teammates import each other's files so everyone
-          stays roughly in sync.
-        </p>
       </div>
     </div>
   )

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { getDashboardStats, getMeta, listProducts } from '../db/storage.js'
+import { getDashboardStats, listProducts } from '../db/storage.js'
 import { useTeamMember } from '../context/TeamMemberContext.jsx'
 import { Card, Badge, Button, EmptyState } from '../components/ui.jsx'
 import {
@@ -40,17 +40,10 @@ export default function Dashboard() {
   const { member, clearMember } = useTeamMember()
   const navigate = useNavigate()
   const [stats, setStats] = useState(null)
-  const [sync, setSync] = useState({ lastExport: null, lastImport: null })
   const [productNames, setProductNames] = useState({})
 
   const load = useCallback(async () => {
-    const [s, lastExport, lastImport] = await Promise.all([
-      getDashboardStats(),
-      getMeta('lastExport'),
-      getMeta('lastImport'),
-    ])
-    setStats(s)
-    setSync({ lastExport, lastImport })
+    setStats(await getDashboardStats())
   }, [])
 
   useEffect(() => {
@@ -92,7 +85,7 @@ export default function Dashboard() {
             <Link
               to="/data-sync"
               className="tap flex h-10 w-10 items-center justify-center rounded-full bg-white/10"
-              aria-label="Export / Import data"
+              aria-label="Export data / bulk import products"
             >
               <SyncIcon className="h-5 w-5" />
             </Link>
@@ -138,14 +131,12 @@ export default function Dashboard() {
             </p>
           </Card>
         </Link>
-        <Link to="/data-sync">
-          <Card className="!p-4">
-            <p className="text-xs font-medium text-slate-400">Last synced</p>
-            <p className="mt-1 truncate text-sm font-bold text-slate-900">
-              {timeAgo(sync.lastExport > sync.lastImport ? sync.lastExport : sync.lastImport)}
-            </p>
-          </Card>
-        </Link>
+        <Card className="!p-4">
+          <p className="text-xs font-medium text-slate-400">Last activity</p>
+          <p className="mt-1 truncate text-sm font-bold text-slate-900">
+            {timeAgo(stats.recentActivity[0]?.timestamp)}
+          </p>
+        </Card>
       </div>
 
       <div className="mt-5 px-4">
@@ -232,7 +223,7 @@ export default function Dashboard() {
           <TruckIcon className="h-4 w-4" /> Suppliers
         </Link>
         <span>·</span>
-        <Link to="/data-sync">Export / Import data</Link>
+        <Link to="/data-sync">Export data / bulk import</Link>
       </div>
     </div>
   )
