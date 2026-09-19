@@ -2,11 +2,12 @@ import { useTeamMember } from '../../context/TeamMemberContext.jsx'
 import { BoxIcon } from '../../components/icons.jsx'
 
 export const TEAM_ROSTER = [
+  { name: 'Vijayakumar', role: 'Director', function: 'Overall business oversight' },
   { name: 'Moorthy', role: 'Sales Manager', function: 'Oversees and confirms overall inventory accuracy' },
-  { name: 'Rajendran', role: 'Staff', function: 'Daily purchase & sales entry' },
+  { name: 'Rajendran', role: 'Dispatch Manager', function: 'Daily purchase & sales entry' },
   { name: 'Jaheer', role: 'Staff', function: 'Daily purchase & sales entry' },
-  { name: 'Priya Vijayakumar', role: 'Staff', function: 'Monitors stock; daily purchase & sales' },
-  { name: 'Sanjay', role: 'Staff', function: 'Monitors stock; daily purchase & sales' },
+  { name: 'Priya Vijayakumar', role: 'Director', function: 'Monitors stock; daily purchase & sales' },
+  { name: 'Sanjay', role: 'Director', function: 'Monitors stock; daily purchase & sales' },
 ]
 
 export default function NamePicker() {
