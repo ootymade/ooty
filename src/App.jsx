@@ -18,6 +18,10 @@ import SupplierList from './screens/suppliers/SupplierList.jsx'
 import SupplierDetail from './screens/suppliers/SupplierDetail.jsx'
 import SupplierForm from './screens/suppliers/SupplierForm.jsx'
 import DataSync from './screens/settings/DataSync.jsx'
+import DirectOrderList from './screens/orders/DirectOrderList.jsx'
+import DirectOrderForm from './screens/orders/DirectOrderForm.jsx'
+import DirectOrderDetail from './screens/orders/DirectOrderDetail.jsx'
+import DailyOrders from './screens/daily/DailyOrders.jsx'
 import { Spinner } from './components/ui.jsx'
 
 function AppShell() {
@@ -43,6 +47,10 @@ function AppShell() {
           <Route path="/suppliers/:id" element={<SupplierDetail />} />
           <Route path="/suppliers/:id/edit" element={<SupplierForm />} />
           <Route path="/data-sync" element={<DataSync />} />
+          <Route path="/direct-orders" element={<DirectOrderList />} />
+          <Route path="/direct-orders/new" element={<DirectOrderForm />} />
+          <Route path="/direct-orders/:id" element={<DirectOrderDetail />} />
+          <Route path="/daily-orders" element={<DailyOrders />} />
         </Routes>
       </div>
       <BottomNav />

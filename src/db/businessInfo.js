@@ -1,11 +1,15 @@
-// Fixed business details for invoice PDFs. GSTIN/address are placeholders —
-// replace with the real registered values before sending any invoice to a
-// customer; an incorrect GSTIN or address on a GST invoice is a compliance
-// problem, not just a cosmetic one.
+// Fixed business details for invoice PDFs.
 export const BUSINESS = {
   name: 'OOTYMADE ONLINE PRIVATE LIMITED',
-  gstin: 'PLACEHOLDER-GSTIN — set the real one in src/db/businessInfo.js',
-  address: 'PLACEHOLDER ADDRESS — set the real registered office address in src/db/businessInfo.js',
+  gstin: '33AAECO7384G1ZA',
+  // Legal registered address — required on GST invoices.
+  address:
+    'D.NO 10/372, C-2, Periya Bikkatty Annai Indra Nagar, Aruvankadu Post, The Nilgiris, Tamil Nadu 643202',
+  // Office / shipping address, shown as a secondary line if useful (e.g. for
+  // "ships from" or contact purposes) — not the legal registered address.
+  officeAddress:
+    '421/H5, First Floor, Sri Srinivasaperumal Kalyana Mandapam, Ettines Road, Ooty, Tamil Nadu 643001',
+  phones: ['978 978 4344', '97861 68888'],
   state: 'Tamil Nadu',
 }
 

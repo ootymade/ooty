@@ -157,6 +157,13 @@ export const SyncIcon = (props) => (
   </svg>
 )
 
+export const ReceiptIcon = (props) => (
+  <svg {...base} {...props}>
+    <path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3z" />
+    <path d="M9 8h6M9 12h6" />
+  </svg>
+)
+
 export const PackageCheckIcon = (props) => (
   <svg {...base} {...props}>
     <path d="M21 8l-9-5-9 5 9 5 9-5z" />

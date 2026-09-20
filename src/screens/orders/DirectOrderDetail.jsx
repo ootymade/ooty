@@ -1,0 +1,270 @@
+import { useCallback, useEffect, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import {
+  getInvoiceWithItems,
+  confirmDirectOrder,
+  deleteDraftOrder,
+  updateShipment,
+} from '../../db/storage.js'
+import { useRealtimeRefresh } from '../../db/useRealtimeRefresh.js'
+import { useTeamMember } from '../../context/TeamMemberContext.jsx'
+import { useToast } from '../../context/ToastContext.jsx'
+import { downloadInvoicePdf, invoicePdfBlob, invoiceFilename } from '../../lib/invoicePdf.js'
+import { PageHeader, Card, Badge, Button, Input, Field, Spinner, EmptyState } from '../../components/ui.jsx'
+import { DownloadIcon, TrashIcon, PackageCheckIcon } from '../../components/icons.jsx'
+
+const STATUS_TONE = { draft: 'slate', confirmed: 'brand', shipped: 'warn', delivered: 'ok', cancelled: 'danger' }
+const STATUS_LABEL = {
+  draft: 'Proforma (draft)',
+  confirmed: 'Confirmed',
+  shipped: 'Shipped',
+  delivered: 'Delivered',
+  cancelled: 'Cancelled',
+}
+
+const REALTIME_TABLES = ['invoices', 'invoice_items']
+
+function formatDate(iso) {
+  return new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+
+export default function DirectOrderDetail() {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const { member } = useTeamMember()
+  const { push } = useToast()
+
+  const [data, setData] = useState(null)
+  const [notFound, setNotFound] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [courier, setCourier] = useState('')
+  const [tracking, setTracking] = useState('')
+
+  const load = useCallback(async () => {
+    const result = await getInvoiceWithItems(id)
+    if (!result) {
+      setNotFound(true)
+      return
+    }
+    setData(result)
+    setCourier(result.invoice.courierName)
+    setTracking(result.invoice.trackingNumber)
+  }, [id])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  useRealtimeRefresh(REALTIME_TABLES, load)
+
+  if (notFound) {
+    return (
+      <div>
+        <PageHeader title="Order" back />
+        <EmptyState title="Order not found" />
+      </div>
+    )
+  }
+
+  if (!data) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <Spinner className="h-6 w-6 text-brand-600" />
+      </div>
+    )
+  }
+
+  const { invoice, items } = data
+  const isDraft = invoice.status === 'draft'
+
+  const onConfirm = async () => {
+    if (!confirm('Confirm this order? This assigns a GST invoice number and deducts stock — it cannot be undone.')) return
+    setBusy(true)
+    try {
+      await confirmDirectOrder(id, member)
+      push('Order confirmed — GST invoice generated', { tone: 'success' })
+      await load()
+    } catch (err) {
+      push(err.message, { tone: 'error' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const onDelete = async () => {
+    if (!confirm('Delete this draft order?')) return
+    await deleteDraftOrder(id)
+    push('Draft deleted')
+    navigate('/direct-orders')
+  }
+
+  const saveShipment = async () => {
+    setBusy(true)
+    try {
+      await updateShipment(id, { courierName: courier, trackingNumber: tracking })
+      push('Shipment details saved', { tone: 'success' })
+      await load()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const setStatus = async (status) => {
+    setBusy(true)
+    try {
+      await updateShipment(id, { status })
+      push(`Marked as ${STATUS_LABEL[status].toLowerCase()}`, { tone: 'success' })
+      await load()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const onDownload = () => downloadInvoicePdf({ invoice, items })
+
+  const onShare = async () => {
+    try {
+      const blob = await invoicePdfBlob({ invoice, items })
+      const file = new File([blob], invoiceFilename(invoice), { type: 'application/pdf' })
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        const trackLine = invoice.trackingNumber
+          ? `\nTrack my order: ${invoice.courierName || 'Courier'} — ${invoice.trackingNumber}`
+          : ''
+        await navigator.share({
+          files: [file],
+          title: invoice.kind === 'gst' ? `Invoice INV-${invoice.invoiceNumber}` : 'Proforma Invoice',
+          text: `Here's your ${invoice.kind === 'gst' ? 'invoice' : 'quote'} from OotyMade.${trackLine}`,
+        })
+      } else {
+        onDownload()
+        push('Direct sharing isn’t supported here — downloaded the PDF instead', { tone: 'warn' })
+      }
+    } catch (err) {
+      if (err?.name !== 'AbortError') push('Could not share the PDF', { tone: 'error' })
+    }
+  }
+
+  return (
+    <div className="pb-8">
+      <PageHeader
+        title={invoice.customerName}
+        back
+        right={
+          isDraft && (
+            <Button variant="ghost" size="icon" onClick={onDelete} aria-label="Delete draft">
+              <TrashIcon className="h-5 w-5 text-danger-600" />
+            </Button>
+          )
+        }
+      />
+
+      <div className="space-y-4 px-4 pt-4">
+        <div className="flex items-center justify-between">
+          <Badge tone={STATUS_TONE[invoice.status]}>{STATUS_LABEL[invoice.status]}</Badge>
+          <span className="text-sm text-slate-400">
+            {invoice.kind === 'gst' ? `INV-${invoice.invoiceNumber}` : 'Proforma'} · {formatDate(invoice.createdAt)}
+          </span>
+        </div>
+
+        <Card className="space-y-1 text-sm">
+          <p className="font-semibold text-slate-800">{invoice.customerName}</p>
+          {invoice.customerPhone && <p className="text-slate-500">{invoice.customerPhone}</p>}
+          {invoice.customerAddress && <p className="text-slate-500">{invoice.customerAddress}</p>}
+          <p className="text-slate-400">{invoice.customerState}{invoice.customerGstin && ` · GSTIN ${invoice.customerGstin}`}</p>
+        </Card>
+
+        <Card className="divide-y divide-slate-100 !p-0">
+          {items.map((it) => (
+            <div key={it.id} className="flex items-center justify-between px-4 py-3 text-sm">
+              <div className="min-w-0">
+                <p className="truncate font-medium text-slate-800">{it.name}</p>
+                <p className="text-xs text-slate-400">
+                  HSN {it.hsnCode} · {it.quantity} × ₹{it.unitPrice.toFixed(2)}
+                </p>
+              </div>
+              <span className="shrink-0 font-semibold text-slate-700">₹{it.lineTotal.toFixed(2)}</span>
+            </div>
+          ))}
+        </Card>
+
+        <Card className="space-y-1 text-sm">
+          <div className="flex justify-between">
+            <span className="text-slate-400">Subtotal</span>
+            <span className="font-medium text-slate-700">₹{invoice.subtotal.toFixed(2)}</span>
+          </div>
+          {invoice.cgst > 0 && (
+            <div className="flex justify-between">
+              <span className="text-slate-400">CGST</span>
+              <span className="font-medium text-slate-700">₹{invoice.cgst.toFixed(2)}</span>
+            </div>
+          )}
+          {invoice.sgst > 0 && (
+            <div className="flex justify-between">
+              <span className="text-slate-400">SGST</span>
+              <span className="font-medium text-slate-700">₹{invoice.sgst.toFixed(2)}</span>
+            </div>
+          )}
+          {invoice.igst > 0 && (
+            <div className="flex justify-between">
+              <span className="text-slate-400">IGST</span>
+              <span className="font-medium text-slate-700">₹{invoice.igst.toFixed(2)}</span>
+            </div>
+          )}
+          <div className="flex justify-between border-t border-slate-100 pt-1 text-base font-bold text-slate-900">
+            <span>Total</span>
+            <span>₹{invoice.total.toFixed(2)}</span>
+          </div>
+        </Card>
+
+        {isDraft ? (
+          <Button className="w-full" size="lg" onClick={onConfirm} disabled={busy}>
+            {busy ? <Spinner className="h-4 w-4" /> : 'Confirm & generate GST invoice'}
+          </Button>
+        ) : (
+          <>
+            <Card className="space-y-3">
+              <p className="text-sm font-semibold text-slate-700">Shipment tracking</p>
+              <Field label="Courier">
+                <Input value={courier} onChange={(e) => setCourier(e.target.value)} placeholder="e.g. Delhivery, DTDC, India Post" />
+              </Field>
+              <Field label="Tracking number">
+                <Input value={tracking} onChange={(e) => setTracking(e.target.value)} />
+              </Field>
+              <Button variant="outline" size="sm" onClick={saveShipment} disabled={busy}>
+                Save tracking details
+              </Button>
+              {invoice.status === 'confirmed' && (
+                <Button size="sm" onClick={() => setStatus('shipped')} disabled={busy}>
+                  <PackageCheckIcon className="h-4 w-4" /> Mark as shipped
+                </Button>
+              )}
+              {invoice.status === 'shipped' && (
+                <Button size="sm" onClick={() => setStatus('delivered')} disabled={busy}>
+                  <PackageCheckIcon className="h-4 w-4" /> Mark as delivered
+                </Button>
+              )}
+            </Card>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Button variant="outline" onClick={onDownload}>
+                <DownloadIcon className="h-5 w-5" /> Download PDF
+              </Button>
+              <Button onClick={onShare}>Share via WhatsApp</Button>
+            </div>
+          </>
+        )}
+
+        {isDraft && (
+          <div className="grid grid-cols-2 gap-3">
+            <Button variant="outline" onClick={onDownload}>
+              <DownloadIcon className="h-5 w-5" /> Download quote
+            </Button>
+            <Button variant="outline" onClick={onShare}>
+              Share quote
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

@@ -1,9 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { getDashboardStats, listProducts } from '../db/storage.js'
+import { getDashboardStats, listProducts, getTodayOrderSummary } from '../db/storage.js'
 import { useRealtimeRefresh } from '../db/useRealtimeRefresh.js'
-
-const REALTIME_TABLES = ['products', 'movements', 'purchase_orders', 'invoices', 'daily_order_counts']
 import { useTeamMember } from '../context/TeamMemberContext.jsx'
 import { Card, Badge, Button, EmptyState } from '../components/ui.jsx'
 import {
@@ -14,7 +12,10 @@ import {
   BoxIcon,
   TruckIcon,
   SyncIcon,
+  ReceiptIcon,
 } from '../components/icons.jsx'
+
+const REALTIME_TABLES = ['products', 'movements', 'purchase_orders', 'invoices', 'daily_order_counts']
 
 function formatMoney(n) {
   return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n || 0)
@@ -46,11 +47,13 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const [stats, setStats] = useState(null)
   const [products, setProducts] = useState(null)
+  const [orderSummary, setOrderSummary] = useState(null)
 
   const load = useCallback(async () => {
-    const [s, all] = await Promise.all([getDashboardStats(), listProducts()])
+    const [s, all, summary] = await Promise.all([getDashboardStats(), listProducts(), getTodayOrderSummary()])
     setStats(s)
     setProducts(all)
+    setOrderSummary(summary)
   }, [])
 
   useEffect(() => {
@@ -176,7 +179,7 @@ export default function Dashboard() {
 
       <div className="mt-5 px-4">
         <p className="mb-2 text-sm font-semibold text-slate-500">Quick actions</p>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-4 gap-3">
           <Button variant="secondary" className="!flex-col !gap-1.5 !py-4" onClick={() => navigate('/scan')}>
             <ScanIcon className="h-6 w-6" />
             <span className="text-xs">Scan</span>
@@ -193,8 +196,45 @@ export default function Dashboard() {
             <ClipboardIcon className="h-6 w-6" />
             <span className="text-xs">New PO</span>
           </Button>
+          <Button
+            variant="secondary"
+            className="!flex-col !gap-1.5 !py-4"
+            onClick={() => navigate('/direct-orders/new')}
+          >
+            <ReceiptIcon className="h-6 w-6" />
+            <span className="text-xs">New Order</span>
+          </Button>
         </div>
       </div>
+
+      {orderSummary && (
+        <div className="mt-5 px-4">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-sm font-semibold text-slate-500">Today&apos;s orders shipped</p>
+            <Link to="/daily-orders" className="text-xs font-semibold text-brand-600">
+              See all
+            </Link>
+          </div>
+          <Card>
+            <p className="text-3xl font-bold text-slate-900">{orderSummary.total}</p>
+            {Object.keys(orderSummary.byChannel).length > 0 && (
+              <div className="mt-3 space-y-1.5 border-t border-slate-100 pt-3">
+                {Object.entries(orderSummary.byChannel).map(([channel, count]) => (
+                  <div key={channel} className="flex justify-between text-xs">
+                    <span className="text-slate-500">{channel}</span>
+                    <span className="font-semibold text-slate-700">{count}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <Link to="/daily-orders">
+              <Button variant="outline" size="sm" className="mt-3 w-full">
+                Update today&apos;s counts
+              </Button>
+            </Link>
+          </Card>
+        </div>
+      )}
 
       <div className="mt-5 px-4">
         <p className="mb-2 text-sm font-semibold text-slate-500">Recent activity</p>
@@ -229,7 +269,11 @@ export default function Dashboard() {
         )}
       </div>
 
-      <div className="mt-6 flex items-center justify-center gap-4 px-4 text-xs text-slate-400">
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 px-4 text-xs text-slate-400">
+        <Link to="/direct-orders" className="flex items-center gap-1">
+          <ReceiptIcon className="h-4 w-4" /> Direct orders
+        </Link>
+        <span>·</span>
         <Link to="/suppliers" className="flex items-center gap-1">
           <TruckIcon className="h-4 w-4" /> Suppliers
         </Link>
