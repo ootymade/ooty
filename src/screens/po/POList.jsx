@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { listPurchaseOrders, listSuppliers } from '../../db/storage.js'
+import { useRealtimeRefresh } from '../../db/useRealtimeRefresh.js'
 import { PageHeader, Badge, Button, EmptyState, Card } from '../../components/ui.jsx'
 import { PlusIcon, ClipboardIcon } from '../../components/icons.jsx'
+
+const REALTIME_TABLES = ['purchase_orders']
 
 const STATUS_TONE = {
   draft: 'slate',
@@ -35,6 +38,10 @@ export default function POList() {
   useEffect(() => {
     listPurchaseOrders({ status: status === 'all' ? '' : status }).then(setOrders)
   }, [status])
+
+  useRealtimeRefresh(REALTIME_TABLES, () => {
+    listPurchaseOrders({ status: status === 'all' ? '' : status }).then(setOrders)
+  })
 
   return (
     <div>

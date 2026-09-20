@@ -1,6 +1,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { getDashboardStats, listProducts } from '../db/storage.js'
+import { useRealtimeRefresh } from '../db/useRealtimeRefresh.js'
+
+const REALTIME_TABLES = ['products', 'movements', 'purchase_orders', 'invoices', 'daily_order_counts']
 import { useTeamMember } from '../context/TeamMemberContext.jsx'
 import { Card, Badge, Button, EmptyState } from '../components/ui.jsx'
 import {
@@ -53,6 +56,8 @@ export default function Dashboard() {
   useEffect(() => {
     load()
   }, [load])
+
+  useRealtimeRefresh(REALTIME_TABLES, load)
 
   const productNames = {}
   products?.forEach((p) => (productNames[p.id] = p))

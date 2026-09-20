@@ -10,8 +10,11 @@ import {
 } from '../../db/storage.js'
 import { useTeamMember } from '../../context/TeamMemberContext.jsx'
 import { useToast } from '../../context/ToastContext.jsx'
+import { useRealtimeRefresh } from '../../db/useRealtimeRefresh.js'
 import { PageHeader, Card, Badge, Button, Input, Spinner, EmptyState } from '../../components/ui.jsx'
 import { TrashIcon, PackageCheckIcon } from '../../components/icons.jsx'
+
+const REALTIME_TABLES = ['purchase_orders', 'products']
 
 const STATUS_TONE = {
   draft: 'slate',
@@ -62,6 +65,12 @@ export default function PODetail() {
   useEffect(() => {
     load()
   }, [load])
+
+  // Skip auto-refresh while actively entering receive quantities, so an
+  // unrelated change elsewhere doesn't wipe out in-progress input.
+  useRealtimeRefresh(REALTIME_TABLES, () => {
+    if (!receiveMode) load()
+  })
 
   if (notFound) {
     return (

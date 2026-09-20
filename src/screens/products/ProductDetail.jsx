@@ -2,8 +2,11 @@ import { useEffect, useState, useCallback } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
 import { getProduct, getSupplier, listMovements } from '../../db/storage.js'
+import { useRealtimeRefresh } from '../../db/useRealtimeRefresh.js'
 import { PageHeader, Card, Badge, Button, Spinner, EmptyState } from '../../components/ui.jsx'
 import { PlusIcon, MinusIcon, EditIcon, QrIcon, BoxIcon, TruckIcon } from '../../components/icons.jsx'
+
+const REALTIME_TABLES = ['products', 'movements']
 
 const REASON_LABEL = {
   received: 'Received',
@@ -44,6 +47,8 @@ export default function ProductDetail() {
   useEffect(() => {
     load()
   }, [load])
+
+  useRealtimeRefresh(REALTIME_TABLES, load)
 
   if (notFound) {
     return (

@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { listProducts, listCategories, listSuppliers } from '../../db/storage.js'
+import { useRealtimeRefresh } from '../../db/useRealtimeRefresh.js'
 import { PageHeader, Input, Select, Badge, EmptyState, Button } from '../../components/ui.jsx'
 import { SearchIcon, PlusIcon, BoxIcon } from '../../components/icons.jsx'
+
+const REALTIME_TABLES = ['products']
 
 export default function ProductList() {
   const [params, setParams] = useSearchParams()
@@ -28,6 +31,10 @@ export default function ProductList() {
       cancelled = true
     }
   }, [search, category, supplierFilter])
+
+  useRealtimeRefresh(REALTIME_TABLES, () => {
+    listProducts({ search, category, supplierId: supplierFilter }).then(setProducts)
+  })
 
   const visible = useMemo(() => {
     if (!products) return null

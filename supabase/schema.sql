@@ -1,11 +1,13 @@
 -- Ooty Inventory — Supabase schema
--- Run this once in your Supabase project's SQL Editor (Dashboard → SQL Editor → New query).
--- Safe to re-run: uses IF NOT EXISTS / CREATE OR REPLACE throughout.
+-- This file mirrors what's live in the "OM Stock Inventory 2026" Supabase
+-- project. Safe to re-run top-to-bottom against a fresh project, or as a
+-- reference for what's there — uses IF NOT EXISTS / CREATE OR REPLACE /
+-- DROP POLICY IF EXISTS throughout.
 
 create extension if not exists pgcrypto;
 
 -- ---------------------------------------------------------------------------
--- Tables
+-- Core inventory tables
 -- ---------------------------------------------------------------------------
 
 create table if not exists suppliers (
@@ -30,6 +32,7 @@ create table if not exists products (
   supplier_id uuid references suppliers(id) on delete set null,
   unit_cost numeric not null default 0,
   photo text default '',
+  hsn_code text not null default '1806',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -60,33 +63,138 @@ create table if not exists movements (
 
 create index if not exists movements_product_id_idx on movements(product_id);
 create index if not exists movements_timestamp_idx on movements("timestamp" desc);
+create index if not exists movements_po_id_idx on movements(po_id);
 create index if not exists products_supplier_id_idx on products(supplier_id);
+create index if not exists purchase_orders_supplier_id_idx on purchase_orders(supplier_id);
+
+-- ---------------------------------------------------------------------------
+-- Customers (Direct Orders)
+-- ---------------------------------------------------------------------------
+
+create table if not exists customers (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  phone text default '',
+  address text default '',
+  state text default 'Tamil Nadu',
+  gstin text default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- ---------------------------------------------------------------------------
+-- Invoices & proforma invoices (Direct Orders)
+-- ---------------------------------------------------------------------------
+
+-- Sequential, gap-resistant GST invoice numbers. Only assigned when a
+-- proforma is confirmed into a real GST invoice (see confirm_direct_order).
+create sequence if not exists gst_invoice_number_seq start 1;
+
+create table if not exists invoices (
+  id uuid primary key default gen_random_uuid(),
+  kind text not null default 'proforma' check (kind in ('proforma', 'gst')),
+  invoice_number integer unique,
+  status text not null default 'draft' check (status in ('draft', 'confirmed', 'shipped', 'delivered', 'cancelled')),
+  customer_id uuid references customers(id) on delete set null,
+  customer_name_snapshot text not null default '',
+  customer_phone_snapshot text default '',
+  customer_address_snapshot text default '',
+  customer_state_snapshot text default 'Tamil Nadu',
+  customer_gstin_snapshot text default '',
+  subtotal numeric not null default 0,
+  cgst numeric not null default 0,
+  sgst numeric not null default 0,
+  igst numeric not null default 0,
+  total numeric not null default 0,
+  courier_name text default '',
+  tracking_number text default '',
+  note text default '',
+  created_by text default '',
+  created_by_role text default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists invoices_customer_id_idx on invoices(customer_id);
+create index if not exists invoices_created_at_idx on invoices(created_at desc);
+create index if not exists invoices_status_idx on invoices(status);
+
+create table if not exists invoice_items (
+  id uuid primary key default gen_random_uuid(),
+  invoice_id uuid not null references invoices(id) on delete cascade,
+  product_id uuid references products(id) on delete set null,
+  name_snapshot text not null,
+  hsn_code text not null default '1806',
+  quantity numeric not null,
+  unit_price numeric not null,
+  line_total numeric not null
+);
+
+create index if not exists invoice_items_invoice_id_idx on invoice_items(invoice_id);
+create index if not exists invoice_items_product_id_idx on invoice_items(product_id);
+
+-- ---------------------------------------------------------------------------
+-- Daily order count log (manual, one row per date + channel)
+-- ---------------------------------------------------------------------------
+
+create table if not exists daily_order_counts (
+  order_date date not null,
+  channel text not null,
+  order_count integer not null default 0,
+  entered_by text default '',
+  updated_at timestamptz not null default now(),
+  primary key (order_date, channel)
+);
+
+create index if not exists daily_order_counts_date_idx on daily_order_counts(order_date desc);
 
 -- ---------------------------------------------------------------------------
 -- Row Level Security — only a signed-in team member (the one shared login)
 -- can read or write anything. The public anon key alone gets nothing.
+-- auth.role() is wrapped as (select auth.role()) so Postgres evaluates it
+-- once per query instead of once per row (see auth_rls_initplan advisor).
 -- ---------------------------------------------------------------------------
 
 alter table suppliers enable row level security;
 alter table products enable row level security;
 alter table purchase_orders enable row level security;
 alter table movements enable row level security;
+alter table customers enable row level security;
+alter table invoices enable row level security;
+alter table invoice_items enable row level security;
+alter table daily_order_counts enable row level security;
 
 drop policy if exists "team full access" on suppliers;
 create policy "team full access" on suppliers
-  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+  for all using ((select auth.role()) = 'authenticated') with check ((select auth.role()) = 'authenticated');
 
 drop policy if exists "team full access" on products;
 create policy "team full access" on products
-  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+  for all using ((select auth.role()) = 'authenticated') with check ((select auth.role()) = 'authenticated');
 
 drop policy if exists "team full access" on purchase_orders;
 create policy "team full access" on purchase_orders
-  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+  for all using ((select auth.role()) = 'authenticated') with check ((select auth.role()) = 'authenticated');
 
 drop policy if exists "team full access" on movements;
 create policy "team full access" on movements
-  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+  for all using ((select auth.role()) = 'authenticated') with check ((select auth.role()) = 'authenticated');
+
+drop policy if exists "team full access" on customers;
+create policy "team full access" on customers
+  for all using ((select auth.role()) = 'authenticated') with check ((select auth.role()) = 'authenticated');
+
+drop policy if exists "team full access" on invoices;
+create policy "team full access" on invoices
+  for all using ((select auth.role()) = 'authenticated') with check ((select auth.role()) = 'authenticated');
+
+drop policy if exists "team full access" on invoice_items;
+create policy "team full access" on invoice_items
+  for all using ((select auth.role()) = 'authenticated') with check ((select auth.role()) = 'authenticated');
+
+drop policy if exists "team full access" on daily_order_counts;
+create policy "team full access" on daily_order_counts
+  for all using ((select auth.role()) = 'authenticated') with check ((select auth.role()) = 'authenticated');
 
 -- ---------------------------------------------------------------------------
 -- Atomic stock operations. With several people editing the same product at
@@ -94,6 +202,11 @@ create policy "team full access" on movements
 -- browser can silently lose one person's change (classic lost-update race).
 -- These run as a single database statement/transaction instead, so
 -- concurrent edits are always serialized correctly by Postgres.
+--
+-- SECURITY: Postgres grants EXECUTE on new functions to PUBLIC by default,
+-- and Supabase's default privileges additionally grant it to `anon`
+-- directly — so `grant ... to authenticated` alone does NOT stop
+-- unauthenticated callers. Both must be explicitly revoked below.
 -- ---------------------------------------------------------------------------
 
 create or replace function adjust_stock(
@@ -138,6 +251,7 @@ begin
 end;
 $$;
 
+revoke execute on function adjust_stock(uuid, numeric, text, text, text, text, uuid) from public, anon;
 grant execute on function adjust_stock(uuid, numeric, text, text, text, text, uuid) to authenticated;
 
 create or replace function receive_purchase_order(
@@ -209,4 +323,82 @@ begin
 end;
 $$;
 
+revoke execute on function receive_purchase_order(uuid, jsonb, text, text) from public, anon;
 grant execute on function receive_purchase_order(uuid, jsonb, text, text) to authenticated;
+
+-- Confirms a draft/proforma order into a numbered GST invoice, atomically:
+-- assigns the next sequential invoice number, deducts stock for every line
+-- item via the EXISTING adjust_stock function (never a separate/duplicate
+-- stock-deduction path), then marks the order confirmed. All in one
+-- transaction, so a numbered invoice always has its stock movements.
+create or replace function confirm_direct_order(
+  p_invoice_id uuid,
+  p_member_name text,
+  p_member_role text
+) returns invoices
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_invoice invoices;
+  v_item invoice_items%rowtype;
+  v_number integer;
+begin
+  select * into v_invoice from invoices where id = p_invoice_id for update;
+  if not found then
+    raise exception 'Order not found';
+  end if;
+  if v_invoice.status <> 'draft' then
+    raise exception 'This order has already been confirmed';
+  end if;
+
+  v_number := nextval('gst_invoice_number_seq');
+
+  for v_item in select * from invoice_items where invoice_id = p_invoice_id
+  loop
+    if v_item.product_id is not null then
+      perform adjust_stock(
+        v_item.product_id,
+        -v_item.quantity,
+        'sold',
+        'Direct order INV-' || v_number::text,
+        p_member_name,
+        p_member_role
+      );
+    end if;
+  end loop;
+
+  update invoices
+    set kind = 'gst',
+        status = 'confirmed',
+        invoice_number = v_number,
+        updated_at = now()
+    where id = p_invoice_id
+    returning * into v_invoice;
+
+  return v_invoice;
+end;
+$$;
+
+revoke execute on function confirm_direct_order(uuid, text, text) from public, anon;
+grant execute on function confirm_direct_order(uuid, text, text) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Realtime: broadcast changes on every table the app reads, so all 5 phones
+-- see the same data live.
+-- ---------------------------------------------------------------------------
+do $$
+declare
+  t text;
+begin
+  foreach t in array array['products','suppliers','movements','purchase_orders','customers','invoices','invoice_items','daily_order_counts']
+  loop
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t
+    ) then
+      execute format('alter publication supabase_realtime add table public.%I', t);
+    end if;
+  end loop;
+end $$;

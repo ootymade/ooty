@@ -4,6 +4,7 @@
 // needing to change.
 import { supabase } from './supabaseClient.js'
 import { sortByCategoryOrder } from './categoryOrder.js'
+import { BUSINESS, DEFAULT_GST_RATE } from './businessInfo.js'
 
 const clean = (str) => (str ?? '').toString().trim()
 
@@ -23,6 +24,7 @@ function rowToProduct(row) {
     supplierId: row.supplier_id || '',
     unitCost: Number(row.unit_cost),
     photo: row.photo || '',
+    hsnCode: row.hsn_code || '1806',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -135,6 +137,7 @@ export async function createProduct(data, member) {
       supplier_id: data.supplierId || null,
       unit_cost: Number(data.unitCost) || 0,
       photo: data.photo || '',
+      hsn_code: clean(data.hsnCode) || '1806',
     })
     .select()
     .single()
@@ -169,6 +172,7 @@ export async function updateProduct(id, data) {
   if (data.supplierId !== undefined) row.supplier_id = data.supplierId || null
   if (data.unitCost !== undefined) row.unit_cost = Number(data.unitCost) || 0
   if (data.photo !== undefined) row.photo = data.photo
+  if (data.hsnCode !== undefined) row.hsn_code = clean(data.hsnCode) || '1806'
   row.updated_at = new Date().toISOString()
 
   const { data: updated, error } = await supabase.from('products').update(row).eq('id', id).select().single()
@@ -441,4 +445,321 @@ export async function bulkImportProducts(payload, member) {
     }
   }
   return { created, updated }
+}
+
+// ---------------------------------------------------------------------------
+// Customers
+// ---------------------------------------------------------------------------
+
+function rowToCustomer(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    phone: row.phone || '',
+    address: row.address || '',
+    state: row.state || BUSINESS.state,
+    gstin: row.gstin || '',
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+export async function listCustomers({ search = '' } = {}) {
+  const { data, error } = await supabase.from('customers').select('*').order('name')
+  must(error)
+  let items = data.map(rowToCustomer)
+  if (search) {
+    const q = search.toLowerCase()
+    items = items.filter((c) => c.name.toLowerCase().includes(q) || c.phone.includes(q))
+  }
+  return items
+}
+
+export async function getCustomer(id) {
+  const { data, error } = await supabase.from('customers').select('*').eq('id', id).maybeSingle()
+  must(error)
+  return data ? rowToCustomer(data) : undefined
+}
+
+export async function createCustomer(data) {
+  const name = clean(data.name)
+  if (!name) throw new Error('Customer name is required')
+  const { data: inserted, error } = await supabase
+    .from('customers')
+    .insert({
+      name,
+      phone: clean(data.phone),
+      address: clean(data.address),
+      state: clean(data.state) || BUSINESS.state,
+      gstin: clean(data.gstin),
+    })
+    .select()
+    .single()
+  must(error)
+  return rowToCustomer(inserted)
+}
+
+export async function updateCustomer(id, data) {
+  const row = { updated_at: new Date().toISOString() }
+  if (data.name !== undefined) row.name = clean(data.name)
+  if (data.phone !== undefined) row.phone = clean(data.phone)
+  if (data.address !== undefined) row.address = clean(data.address)
+  if (data.state !== undefined) row.state = clean(data.state) || BUSINESS.state
+  if (data.gstin !== undefined) row.gstin = clean(data.gstin)
+  const { data: updated, error } = await supabase.from('customers').update(row).eq('id', id).select().single()
+  must(error)
+  return rowToCustomer(updated)
+}
+
+// ---------------------------------------------------------------------------
+// Direct Orders: Proforma & GST invoices
+// ---------------------------------------------------------------------------
+
+function rowToInvoice(row) {
+  return {
+    id: row.id,
+    kind: row.kind,
+    invoiceNumber: row.invoice_number,
+    status: row.status,
+    customerId: row.customer_id || '',
+    customerName: row.customer_name_snapshot || '',
+    customerPhone: row.customer_phone_snapshot || '',
+    customerAddress: row.customer_address_snapshot || '',
+    customerState: row.customer_state_snapshot || '',
+    customerGstin: row.customer_gstin_snapshot || '',
+    subtotal: Number(row.subtotal),
+    cgst: Number(row.cgst),
+    sgst: Number(row.sgst),
+    igst: Number(row.igst),
+    total: Number(row.total),
+    courierName: row.courier_name || '',
+    trackingNumber: row.tracking_number || '',
+    note: row.note || '',
+    createdBy: row.created_by || '',
+    createdByRole: row.created_by_role || '',
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+function rowToInvoiceItem(row) {
+  return {
+    id: row.id,
+    invoiceId: row.invoice_id,
+    productId: row.product_id || '',
+    name: row.name_snapshot,
+    hsnCode: row.hsn_code,
+    quantity: Number(row.quantity),
+    unitPrice: Number(row.unit_price),
+    lineTotal: Number(row.line_total),
+  }
+}
+
+export async function listInvoices({ search = '', customerId = '', dateFrom = '', dateTo = '' } = {}) {
+  let query = supabase.from('invoices').select('*').order('created_at', { ascending: false })
+  if (customerId) query = query.eq('customer_id', customerId)
+  if (dateFrom) query = query.gte('created_at', dateFrom)
+  if (dateTo) query = query.lte('created_at', dateTo)
+  const { data, error } = await query
+  must(error)
+  let items = data.map(rowToInvoice)
+  if (search) {
+    const q = search.toLowerCase()
+    items = items.filter(
+      (i) =>
+        i.customerName.toLowerCase().includes(q) ||
+        i.customerPhone.includes(q) ||
+        (i.invoiceNumber && String(i.invoiceNumber).includes(q)),
+    )
+  }
+  return items
+}
+
+export async function getInvoiceWithItems(id) {
+  const [{ data: invoice, error }, { data: items, error: itemsError }] = await Promise.all([
+    supabase.from('invoices').select('*').eq('id', id).maybeSingle(),
+    supabase.from('invoice_items').select('*').eq('invoice_id', id).order('id'),
+  ])
+  must(error)
+  must(itemsError)
+  if (!invoice) return undefined
+  return { invoice: rowToInvoice(invoice), items: (items || []).map(rowToInvoiceItem) }
+}
+
+// Computes the CGST/SGST/IGST split for a set of line items against a
+// customer's state — intra-Tamil-Nadu splits evenly into CGST+SGST,
+// everything else is IGST. `items` is [{quantity, unitPrice, gstRate}].
+function calcGstBreakup(items, customerState) {
+  const subtotal = items.reduce((s, it) => s + Number(it.quantity) * Number(it.unitPrice), 0)
+  const taxTotal = items.reduce(
+    (s, it) => s + (Number(it.quantity) * Number(it.unitPrice) * (Number(it.gstRate) || DEFAULT_GST_RATE)) / 100,
+    0,
+  )
+  const isIntraState = clean(customerState).toLowerCase() === clean(BUSINESS.state).toLowerCase()
+  const cgst = isIntraState ? taxTotal / 2 : 0
+  const sgst = isIntraState ? taxTotal / 2 : 0
+  const igst = isIntraState ? 0 : taxTotal
+  return { subtotal, cgst, sgst, igst, total: subtotal + taxTotal }
+}
+
+// Creates a draft Proforma order. `items`: [{productId, name, hsnCode,
+// quantity, unitPrice, gstRate}]. Either pass `customerId` (existing
+// customer) or `newCustomer` ({name, phone, address, state, gstin}).
+// Stock is NOT touched here — only confirmDirectOrder() deducts it.
+export async function createDirectOrder({ customerId, newCustomer, items, note, member }) {
+  if (!items?.length) throw new Error('Add at least one product')
+
+  let customer
+  if (customerId) {
+    customer = await getCustomer(customerId)
+    if (!customer) throw new Error('Customer not found')
+  } else {
+    customer = await createCustomer(newCustomer || {})
+  }
+
+  const { subtotal, cgst, sgst, igst, total } = calcGstBreakup(items, customer.state)
+
+  const { data: invoice, error } = await supabase
+    .from('invoices')
+    .insert({
+      kind: 'proforma',
+      status: 'draft',
+      customer_id: customer.id,
+      customer_name_snapshot: customer.name,
+      customer_phone_snapshot: customer.phone,
+      customer_address_snapshot: customer.address,
+      customer_state_snapshot: customer.state,
+      customer_gstin_snapshot: customer.gstin,
+      subtotal,
+      cgst,
+      sgst,
+      igst,
+      total,
+      note: clean(note),
+      created_by: member?.name || '',
+      created_by_role: member?.role || '',
+    })
+    .select()
+    .single()
+  must(error)
+
+  const itemRows = items.map((it) => ({
+    invoice_id: invoice.id,
+    product_id: it.productId || null,
+    name_snapshot: it.name,
+    hsn_code: clean(it.hsnCode) || '1806',
+    quantity: Number(it.quantity),
+    unit_price: Number(it.unitPrice),
+    line_total: Number(it.quantity) * Number(it.unitPrice),
+  }))
+  const { error: itemsError } = await supabase.from('invoice_items').insert(itemRows)
+  must(itemsError)
+
+  return rowToInvoice(invoice)
+}
+
+// Deletes a draft order (only allowed before confirmation — nothing to
+// undo yet since stock hasn't been touched).
+export async function deleteDraftOrder(id) {
+  const { data: invoice, error } = await supabase.from('invoices').select('status').eq('id', id).maybeSingle()
+  must(error)
+  if (invoice && invoice.status !== 'draft') {
+    throw new Error('Only draft orders can be deleted — this one has already been confirmed')
+  }
+  const { error: delError } = await supabase.from('invoices').delete().eq('id', id)
+  must(delError)
+}
+
+// Confirms a draft order into a numbered GST invoice: assigns the next
+// sequential invoice number and deducts stock for every line item via the
+// existing adjust_stock logic — atomically, in a single database function
+// (see confirm_direct_order in supabase/schema.sql), so it can never be
+// run twice or leave stock and invoice numbering out of sync.
+export async function confirmDirectOrder(id, member) {
+  const { data, error } = await supabase.rpc('confirm_direct_order', {
+    p_invoice_id: id,
+    p_member_name: member?.name || '',
+    p_member_role: member?.role || '',
+  })
+  must(error)
+  return rowToInvoice(data)
+}
+
+export async function updateShipment(id, { courierName, trackingNumber, status }) {
+  const row = { updated_at: new Date().toISOString() }
+  if (courierName !== undefined) row.courier_name = clean(courierName)
+  if (trackingNumber !== undefined) row.tracking_number = clean(trackingNumber)
+  if (status !== undefined) row.status = status
+  const { data, error } = await supabase.from('invoices').update(row).eq('id', id).select().single()
+  must(error)
+  return rowToInvoice(data)
+}
+
+// ---------------------------------------------------------------------------
+// Daily order count log
+// ---------------------------------------------------------------------------
+
+function rowToDailyCount(row) {
+  return {
+    date: row.order_date,
+    channel: row.channel,
+    orderCount: Number(row.order_count),
+    enteredBy: row.entered_by || '',
+    updatedAt: row.updated_at,
+  }
+}
+
+export async function listDailyOrderCounts({ dateFrom = '', dateTo = '' } = {}) {
+  let query = supabase.from('daily_order_counts').select('*').order('order_date', { ascending: false })
+  if (dateFrom) query = query.gte('order_date', dateFrom)
+  if (dateTo) query = query.lte('order_date', dateTo)
+  const { data, error } = await query
+  must(error)
+  return data.map(rowToDailyCount)
+}
+
+// Sets the count for one date+channel. Safe for two people editing
+// different channels on the same day at the same time — each write only
+// touches its own (date, channel) row.
+export async function upsertDailyOrderCount({ date, channel, orderCount, member }) {
+  const { data, error } = await supabase
+    .from('daily_order_counts')
+    .upsert(
+      {
+        order_date: date,
+        channel,
+        order_count: Number(orderCount) || 0,
+        entered_by: member?.name || '',
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'order_date,channel' },
+    )
+    .select()
+    .single()
+  must(error)
+  return rowToDailyCount(data)
+}
+
+// Confirmed direct-order (GST invoice) count for one date — used to
+// auto-suggest the "Direct" channel's count, which staff can still override.
+export async function getConfirmedDirectOrderCount(date) {
+  const start = `${date}T00:00:00.000Z`
+  const end = `${date}T23:59:59.999Z`
+  const { count, error } = await supabase
+    .from('invoices')
+    .select('id', { count: 'exact', head: true })
+    .eq('kind', 'gst')
+    .gte('created_at', start)
+    .lte('created_at', end)
+  must(error)
+  return count || 0
+}
+
+export async function getTodayOrderSummary() {
+  const today = new Date().toISOString().slice(0, 10)
+  const counts = await listDailyOrderCounts({ dateFrom: today, dateTo: today })
+  const byChannel = {}
+  counts.forEach((c) => (byChannel[c.channel] = c.orderCount))
+  const total = counts.reduce((s, c) => s + c.orderCount, 0)
+  return { date: today, total, byChannel }
 }
