@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
 import { getProduct, getSupplier, listMovements } from '../../db/storage.js'
 import { useRealtimeRefresh } from '../../db/useRealtimeRefresh.js'
+import { formatWeight, productWeightGrams } from '../../lib/weight.js'
 import { PageHeader, Card, Badge, Button, Spinner, EmptyState } from '../../components/ui.jsx'
 import { PlusIcon, MinusIcon, EditIcon, QrIcon, BoxIcon, TruckIcon } from '../../components/icons.jsx'
 
@@ -97,6 +98,11 @@ export default function ProductDetail() {
             <p className="text-2xl font-bold text-slate-900">
               {product.quantity} <span className="text-base font-medium text-slate-400">{product.unit}</span>
             </p>
+            {product.packSizeGrams > 0 && (
+              <p className="text-sm text-slate-400">
+                {product.packSizeGrams} g pack · {formatWeight(productWeightGrams(product))} total
+              </p>
+            )}
             {low && <Badge tone="danger">Below threshold ({product.lowStockThreshold})</Badge>}
           </div>
         </Card>

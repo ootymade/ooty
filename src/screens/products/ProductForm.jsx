@@ -60,6 +60,7 @@ export default function ProductForm() {
     supplierId: '',
     unitCost: '',
     photo: '',
+    packSizeGrams: '',
   })
   const [errors, setErrors] = useState({})
 
@@ -205,6 +206,13 @@ export default function ProductForm() {
 
         <Field label="Low-stock threshold" hint="Flagged when quantity drops to or below this">
           <Input type="number" min="0" value={form.lowStockThreshold} onChange={set('lowStockThreshold')} />
+        </Field>
+
+        <Field
+          label="Pack size (grams)"
+          hint="Only for products sold as fixed-weight packs, counted in Nos — e.g. 500. Leave blank otherwise. Shows the total weight on hand automatically (Nos × pack size)."
+        >
+          <Input type="number" min="0" value={form.packSizeGrams} onChange={set('packSizeGrams')} placeholder="e.g. 500" />
         </Field>
 
         <Field label="Unit cost (₹)" hint="Used to estimate total stock value">

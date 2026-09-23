@@ -25,6 +25,7 @@ function rowToProduct(row) {
     unitCost: Number(row.unit_cost),
     photo: row.photo || '',
     hsnCode: row.hsn_code || '1806',
+    packSizeGrams: row.pack_size_grams != null ? Number(row.pack_size_grams) : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -138,6 +139,7 @@ export async function createProduct(data, member) {
       unit_cost: Number(data.unitCost) || 0,
       photo: data.photo || '',
       hsn_code: clean(data.hsnCode) || '1806',
+      pack_size_grams: data.packSizeGrams ? Number(data.packSizeGrams) : null,
     })
     .select()
     .single()
@@ -173,6 +175,7 @@ export async function updateProduct(id, data) {
   if (data.unitCost !== undefined) row.unit_cost = Number(data.unitCost) || 0
   if (data.photo !== undefined) row.photo = data.photo
   if (data.hsnCode !== undefined) row.hsn_code = clean(data.hsnCode) || '1806'
+  if (data.packSizeGrams !== undefined) row.pack_size_grams = data.packSizeGrams ? Number(data.packSizeGrams) : null
   row.updated_at = new Date().toISOString()
 
   const { data: updated, error } = await supabase.from('products').update(row).eq('id', id).select().single()

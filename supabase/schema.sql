@@ -33,6 +33,11 @@ create table if not exists products (
   unit_cost numeric not null default 0,
   photo text default '',
   hsn_code text not null default '1806',
+  -- Set only for products sold as fixed-weight packs counted in Nos
+  -- (unit='pcs'), e.g. a 500g pack — lets the app compute total weight on
+  -- hand (quantity * pack_size_grams) instead of tracking raw fractional
+  -- kg/g quantities directly.
+  pack_size_grams numeric,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

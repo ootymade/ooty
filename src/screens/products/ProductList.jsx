@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { listProducts, listCategories, listSuppliers } from '../../db/storage.js'
 import { useRealtimeRefresh } from '../../db/useRealtimeRefresh.js'
-import { PageHeader, Input, Select, Badge, EmptyState, Button } from '../../components/ui.jsx'
+import { formatWeight, productWeightGrams } from '../../lib/weight.js'
+import { PageHeader, Input, Select, Badge, Card, EmptyState, Button } from '../../components/ui.jsx'
 import { SearchIcon, PlusIcon, BoxIcon } from '../../components/icons.jsx'
 
 const REALTIME_TABLES = ['products']
@@ -40,6 +41,11 @@ export default function ProductList() {
     if (!products) return null
     return lowStockOnly ? products.filter((p) => p.quantity <= p.lowStockThreshold) : products
   }, [products, lowStockOnly])
+
+  const totalWeightGrams = useMemo(() => {
+    if (!visible) return 0
+    return visible.reduce((sum, p) => sum + (productWeightGrams(p) || 0), 0)
+  }, [visible])
 
   const supplierName = (id) => suppliers.find((s) => s.id === id)?.name
 
@@ -134,33 +140,45 @@ export default function ProductList() {
             }
           />
         ) : (
-          <ul className="divide-y divide-slate-100 rounded-2xl bg-white shadow-sm ring-1 ring-slate-100">
-            {visible.map((p) => {
-              const low = p.quantity <= p.lowStockThreshold
-              return (
-                <li key={p.id}>
-                  <Link to={`/products/${p.id}`} className="flex items-center gap-3 px-4 py-3">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100">
-                      {p.photo ? (
-                        <img src={p.photo} alt="" className="h-full w-full object-cover" />
-                      ) : (
-                        <BoxIcon className="h-5 w-5 text-slate-400" />
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-slate-800">{p.name}</p>
-                      <p className="truncate text-xs text-slate-400">
-                        {p.sku} {p.category && `· ${p.category}`}
-                      </p>
-                    </div>
-                    <Badge tone={low ? 'danger' : 'slate'}>
-                      {p.quantity} {p.unit}
-                    </Badge>
-                  </Link>
-                </li>
-              )
-            })}
-          </ul>
+          <>
+            {totalWeightGrams > 0 && (
+              <Card className="mb-2 flex items-center justify-between !py-3">
+                <span className="text-sm text-slate-500">Total weight in view</span>
+                <span className="text-sm font-bold text-slate-900">{formatWeight(totalWeightGrams)}</span>
+              </Card>
+            )}
+            <ul className="divide-y divide-slate-100 rounded-2xl bg-white shadow-sm ring-1 ring-slate-100">
+              {visible.map((p) => {
+                const low = p.quantity <= p.lowStockThreshold
+                const weight = productWeightGrams(p)
+                return (
+                  <li key={p.id}>
+                    <Link to={`/products/${p.id}`} className="flex items-center gap-3 px-4 py-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100">
+                        {p.photo ? (
+                          <img src={p.photo} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <BoxIcon className="h-5 w-5 text-slate-400" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-slate-800">{p.name}</p>
+                        <p className="truncate text-xs text-slate-400">
+                          {p.sku} {p.category && `· ${p.category}`}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <Badge tone={low ? 'danger' : 'slate'}>
+                          {p.quantity} {p.unit}
+                        </Badge>
+                        {weight > 0 && <p className="mt-1 text-[11px] text-slate-400">{formatWeight(weight)}</p>}
+                      </div>
+                    </Link>
+                  </li>
+                )
+              })}
+            </ul>
+          </>
         )}
       </div>
     </div>
